@@ -15,6 +15,10 @@ from tkinter import ttk
 from tkinter import messagebox
 import threading
 from PIL import ImageTk,Image
+import requests
+import os
+
+
 class OnePieceScraper:
     def __init__(self,url,card_type,card_language,card_year):
         self.base_url = url
@@ -32,17 +36,17 @@ class OnePieceScraper:
                         }
         # self.scraper()
 
-    def get_options(self,set_options,choose_set_button):
+    def get_options(self,set_options,choose_set_button,label_infor):
 
         option = ChromeOptions()
         option.headless = True
         option.add_argument("window-size=1920,1080")
         self.driver = Chrome(options=option)
-
+        label_infor["text"]= "Loading Website................"
         print("Loading Website................")
         self.driver.get(self.base_url)
         self.driver.maximize_window()
-
+        label_infor["text"] = "Loading Options................"
         print("Loading Options................")
         self.options = self.list_options()[1:]
         print(self.options)
@@ -52,9 +56,9 @@ class OnePieceScraper:
 
         set_options['values'] = self.options
 
-    def get_html_from_driver(self,option_chosen):
+    def get_html_from_driver(self,option_chosen,label_infor,images):
         self.option_chosen = option_chosen
-
+        self.down_images = images
 
         button = WebDriverWait(self.driver, 5).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR,
@@ -63,13 +67,16 @@ class OnePieceScraper:
 
         el = self.driver.find_element(By.CLASS_NAME, 'selModalList')
 
-
-
-
+        label_infor["text"] = "Choosing set............"
         choices = el.find_elements(By.CLASS_NAME, "selModalClose")
         for each in choices:
-            if each.get_attribute("innerHTML").lower()==self.option_chosen:
-                each.click()
+            print(each)
+            print(each.get_attribute("innerText"))
+            if each.get_attribute("innerText")==self.option_chosen:
+                try:
+                    each.click()
+                except:
+                    self.driver.execute_script("arguments[0].click();", each)
 
         searchBtn = WebDriverWait(self.driver, 5).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR,
@@ -84,8 +91,14 @@ class OnePieceScraper:
 
         self.driver.close()
 
+        label_infor["text"] = "Restructuring Data............"
+
         self.data = self.scrape_html(html)
+
+        label_infor["text"] = "Writing to Excel............"
         self.write_to_output(self.data)
+        label_infor["text"] = "DONE!! :)"
+
 
     def scrape_html(self,html):
         data = []
@@ -103,6 +116,12 @@ class OnePieceScraper:
             dl_t = dl_tags[each]
             card_image = a_t.find("img")["src"]
             card_image = card_image.replace('..','https://asia-en.onepiece-cardgame.com/')
+
+            image_name = "images/"+card_image.split('/')[-1]
+            if self.down_images:
+                img_data = requests.get(card_image).content
+                with open(image_name, 'wb') as handler:
+                    handler.write(img_data)
 
             card_infor = dl_t.find("div",attrs={"class":["infoCol"]})
             card_infor = card_infor.text
@@ -247,13 +266,20 @@ class ScraperUI:
         choose_set_button = Button(frame_options_centre, text="Choose Set", relief=GROOVE, bg="yellow",fg="black")
         choose_set_button.pack(side=LEFT)
 
+        down_images_check = IntVar()
+        download_images = Checkbutton(frame_options_centre, text="Download Images",variable=down_images_check,bg='black',fg='yellow')
+        download_images.pack(side=LEFT)
 
 
         set_options.pack_forget()
         choose_set_button.pack_forget()
 
 
+        frame_bottom_ = Frame(frame_left,bg='black')
+        frame_bottom_.pack(side=BOTTOM,fill=BOTH,expand=True)
 
+        label_infor = Label(frame_bottom_,bg='black',fg='yellow')
+        label_infor.pack()
 
 
         def choose_language_btn_func(event):
@@ -264,11 +290,21 @@ class ScraperUI:
                 self.one_piece_scraper.base_url = self.language_dict[lang]
             else:
                 messagebox.showerror("Error","Please choose a language first")
-            thread = threading.Thread(target=self.one_piece_scraper.get_options,args=(set_options,choose_set_button))
+            thread = threading.Thread(target=self.one_piece_scraper.get_options,args=(set_options,choose_set_button,label_infor))
             thread.start()
         choose_language_button.bind("<Button-1>",choose_language_btn_func)
 
 
+        def choose_set_btn_func(e):
+            option_chosen = set_options.get().strip()
+            images = True if down_images_check.get()==1 else False
+            if option_chosen!="Choose Set":
+                thread = threading.Thread(target=self.one_piece_scraper.get_html_from_driver,args=(option_chosen,label_infor,images,))
+                thread.start()
+            else:
+                messagebox.showerror("Error","Please choose a Set first")
+
+        choose_set_button.bind("<Button-1>",choose_set_btn_func)
 
 
         root.mainloop()
@@ -278,5 +314,10 @@ if __name__ == '__main__':
     card_type = "One Piece Card Game"
     card_language = "Japanese"
     card_year = datetime.datetime.today().year
+    isDir = os.path.isdir("images")
+    print(isDir)
+    if not isDir:
+        os.mkdir("images")
+
 
     ScraperUI(base_url,card_type,card_language,card_year)
