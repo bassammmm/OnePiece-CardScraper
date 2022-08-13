@@ -10,8 +10,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver import Chrome,ChromeOptions
 import csv
-
-
+from tkinter import *
+from tkinter import ttk
+from tkinter import messagebox
+import threading
+from PIL import ImageTk,Image
 class OnePieceScraper:
     def __init__(self,url,card_type,card_language,card_year):
         self.base_url = url
@@ -27,12 +30,13 @@ class OnePieceScraper:
                             "SEC":"Secret Rare",
                             "P":"Promo"
                         }
-        self.scraper()
+        # self.scraper()
 
-    def scraper(self):
+    def get_options(self,set_options,choose_set_button):
+
         option = ChromeOptions()
-        # option.headless = True
-        # option.add_argument("window-size=1920,1080")
+        option.headless = True
+        option.add_argument("window-size=1920,1080")
         self.driver = Chrome(options=option)
 
         print("Loading Website................")
@@ -40,8 +44,16 @@ class OnePieceScraper:
         self.driver.maximize_window()
 
         print("Loading Options................")
-        options = self.list_options()[1:]
-        self.option_chosen = 'all'
+        self.options = self.list_options()[1:]
+        print(self.options)
+
+        set_options.pack(side=LEFT, padx=5, pady=5)
+        choose_set_button.pack(side=LEFT)
+
+        set_options['values'] = self.options
+
+    def get_html_from_driver(self,option_chosen):
+        self.option_chosen = option_chosen
 
 
         button = WebDriverWait(self.driver, 5).until(
@@ -106,7 +118,7 @@ class OnePieceScraper:
             card_info_intern = dl_t.find("div", attrs={"class": ["getInfo"]})
             card_info_intern = card_info_intern.text
             try:
-                card_info_intern.replace('Card Set(s)','')
+                card_info_intern = card_info_intern.replace('Card Set(s)','')
             except:
                 pass
 
@@ -144,7 +156,7 @@ class OnePieceScraper:
         choices = el.find_elements(By.CLASS_NAME,"selModalClose")
 
         for each in choices:
-            options.append(each.get_attribute("innerHTML"))
+            options.append(each.get_attribute("innerText"))
 
         return options
 
@@ -154,7 +166,7 @@ class OnePieceScraper:
         name_csv = datetime.datetime.today().strftime("%Y_%m_%d_%H_%M.csv")
         name_excel = datetime.datetime.today().strftime("%Y_%m_%d_%H_%M.xlsx")
 
-        with open(name_csv,'w',encoding='utf8',errors='ignore') as file:
+        with open(name_csv,'w',encoding='utf8',errors='ignore',newline='') as file:
             csv_writer = csv.writer(file)
             csv_writer.writerow(header)
             for each in data:
@@ -164,6 +176,102 @@ class OnePieceScraper:
         df.to_excel(name_excel)
 
 
+class ScraperUI:
+    def __init__(self,base_url,card_type,card_language,card_year):
+        self.one_piece_scraper = OnePieceScraper(base_url,card_type,card_language,card_year)
+        self.language_dict = {
+                                    "Asian-English":"https://asia-en.onepiece-cardgame.com/cardlist/",
+                                    "Japanese":"https://www.onepiece-cardgame.com/cardlist/",
+                                    "English":"https://en.onepiece-cardgame.com/cardlist"
+                                }
+
+        self.gui()
+
+
+    def gui(self):
+        root = Tk()
+        background_image = Image.open('background.jpg')
+        background_image = ImageTk.PhotoImage(background_image)
+        w = background_image.width()+700
+        h = background_image.height()
+        root.geometry('%dx%d+0+0' % (w,h))
+        root.resizable(True,False)
+
+
+
+
+
+        frame_parent = Frame(root,bg="black")
+        frame_parent.pack(fill=BOTH,expand=True)
+
+        frame_image = Frame(frame_parent,bg="black")
+        frame_image.pack(side=RIGHT,fill=Y)
+
+        background_label = Label(frame_image, image=background_image)
+        background_label.image = background_image
+        background_label.pack()
+
+
+        frame_left = Frame(frame_parent,bg="black")
+        frame_left.pack(side=LEFT,fill=BOTH,expand=True)
+
+        frame_combo = Frame(frame_left,bg="black")
+        frame_combo.pack(side=TOP,fill=X)
+
+        frame_combo_centre = Frame(frame_combo,bg="black")
+        frame_combo_centre.pack()
+
+        language_list = ["Asian-English", "Japanese", "English"]
+
+        language_combo = ttk.Combobox(frame_combo_centre, values=language_list)
+        language_combo.set("Choose Language")
+        language_combo.pack(side=LEFT,padx=5, pady=5)
+
+        choose_language_button = Button(frame_combo_centre,text="Choose Language",relief=GROOVE,bg="yellow",fg="black")
+        choose_language_button.pack(side=LEFT)
+
+
+
+        frame_options = Frame(frame_left, bg="black")
+        frame_options.pack(side=TOP, fill=X)
+
+        frame_options_centre = Frame(frame_options, bg="black")
+        frame_options_centre.pack()
+
+        self.options_list = []
+
+        set_options = ttk.Combobox(frame_options_centre, values=self.options_list,width=40)
+        set_options.set("Choose Set")
+        set_options.pack(side=LEFT, padx=5, pady=5)
+
+        choose_set_button = Button(frame_options_centre, text="Choose Set", relief=GROOVE, bg="yellow",fg="black")
+        choose_set_button.pack(side=LEFT)
+
+
+
+        set_options.pack_forget()
+        choose_set_button.pack_forget()
+
+
+
+
+
+        def choose_language_btn_func(event):
+
+
+            lang = language_combo.get()
+            if lang!="Choose Language":
+                self.one_piece_scraper.base_url = self.language_dict[lang]
+            else:
+                messagebox.showerror("Error","Please choose a language first")
+            thread = threading.Thread(target=self.one_piece_scraper.get_options,args=(set_options,choose_set_button))
+            thread.start()
+        choose_language_button.bind("<Button-1>",choose_language_btn_func)
+
+
+
+
+        root.mainloop()
 
 if __name__ == '__main__':
     base_url = 'https://asia-en.onepiece-cardgame.com/cardlist/'
@@ -171,4 +279,4 @@ if __name__ == '__main__':
     card_language = "Japanese"
     card_year = datetime.datetime.today().year
 
-    OnePieceScraper(base_url,card_type,card_language,card_year)
+    ScraperUI(base_url,card_type,card_language,card_year)
